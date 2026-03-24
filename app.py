@@ -1,3 +1,17 @@
+# --- LOGO Y TÍTULO ---
+col_logo, col_titulo = st.columns([1, 4])
+with col_logo:
+    try:
+        st.image("logo.png", width=120) # Ajusta el ancho según tu logo
+    except:
+        # Si no encuentra el logo, muestra un emoji como placeholder
+        st.markdown("<h1 style='text-align: center; margin-top: 15px;'>🍌</h1>", unsafe_allow_html=True)
+
+with col_titulo:
+    st.title("GestorIA Pro: Tu Ahorro Inteligente")
+    st.write("Optimizamos tu fiscalidad en tiempo real.")
+st.divider()
+
 import streamlit as st
 import google.generativeai as genai
 from PyPDF2 import PdfReader
