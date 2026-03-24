@@ -5,8 +5,8 @@ from fpdf import FPDF
 import datetime
 import re
 
-# --- 1. CONFIGURACIÓN VISUAL CORPORATIVA ---
-st.set_page_config(page_title="GestorIA - Optimización Fiscal", layout="wide")
+# --- CONFIGURACIÓN VISUAL ---
+st.set_page_config(page_title="GestorIA Pro", layout="wide")
 
 AZUL_CORP = (30, 41, 59)   
 VERDE_CORP = (16, 185, 129) 
@@ -28,7 +28,7 @@ st.markdown(f"""
     </style>
     """, unsafe_allow_html=True)
 
-# --- 2. GENERADOR DE PDF PROFESIONAL ---
+# --- CLASE PDF ---
 class PDF_Report(FPDF):
     def header(self):
         self.set_fill_color(*AZUL_CORP)
@@ -61,123 +61,82 @@ def generar_pdf_bytes(ayudas, total, perfil_str):
         pdf.ln(4)
     return pdf.output()
 
-# --- 3. CONEXIÓN CON LA IA (MODELO ESTABLE) ---
-def iniciar_modelo():
+# --- BUSCADOR AUTOMÁTICO DE MODELO (SOLUCIÓN AL 404) ---
+def configurar_ia_dinamica():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Usamos el nombre de modelo más compatible
-        return genai.GenerativeModel('gemini-1.5-flash')
+        try:
+            # Listamos todos los modelos disponibles para tu API Key
+            modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
+            
+            # Prioridad 1: Flash 1.5 (más barato/rápido)
+            for m in modelos_disponibles:
+                if "gemini-1.5-flash" in m:
+                    return genai.GenerativeModel(m)
+            
+            # Prioridad 2: Pro
+            for m in modelos_disponibles:
+                if "gemini-pro" in m:
+                    return genai.GenerativeModel(m)
+            
+            # Si no, el primero que aparezca
+            if modelos_disponibles:
+                return genai.GenerativeModel(modelos_disponibles[0])
+        except Exception as e:
+            st.error(f"Error al listar modelos: {e}")
     return None
 
-model = iniciar_modelo()
+model = configurar_ia_dinamica()
 
-# --- 4. INTERFAZ DE USUARIO ---
-st.title("⚖️ GestorIA Pro: Tu Consultor Fiscal IA")
+# --- INTERFAZ ---
+st.title("⚖️ GestorIA Pro")
 
-with st.expander("👤 Configura tu Perfil para el Cálculo", expanded=True):
+with st.expander("👤 Configura tu Perfil", expanded=True):
     c1, c2, c3 = st.columns(3)
     with c1:
         edad = st.number_input("Edad", 18, 95, 30)
-        comunidad = st.selectbox("Comunidad Autónoma", ["Madrid", "Andalucía", "Cataluña", "Valencia", "Galicia", "Castilla y León", "Castilla-La Mancha", "Murcia", "Aragón", "Baleares", "Canarias", "Cantabria", "Extremadura", "Navarra", "País Vasco", "Asturias", "La Rioja"])
+        comunidad = st.selectbox("Comunidad", ["Madrid", "Andalucía", "Cataluña", "Valencia", "Galicia", "Castilla y León", "Otros"])
     with c2:
-        situacion = st.selectbox("Situación Laboral", ["Asalariado", "Autónomo", "Desempleado", "Pensionista"])
-        vivienda = st.selectbox("Vivienda", ["Alquiler", "Hipoteca (vivienda habitual)", "Propiedad pagada"])
+        situacion = st.selectbox("Trabajo", ["Asalariado", "Autónomo", "Desempleado"])
+        vivienda = st.selectbox("Vivienda", ["Alquiler", "Hipoteca", "Propiedad"])
     with c3:
-        hijos = st.number_input("Hijos a cargo", 0, 10, 0)
-        rural = st.checkbox("Residencia en zona rural")
-        discapacidad = st.checkbox("Discapacidad (>=33%)")
+        hijos = st.number_input("Hijos", 0, 10, 0)
+        rural = st.checkbox("Zona rural")
 
-st.divider()
-
-if st.button("🚀 ANALIZAR AHORRO Y BUSCAR FUENTES"):
+if st.button("🚀 CALCULAR AHORRO"):
     if not model:
-        st.error("API Key no detectada en Secrets.")
+        st.error("No se pudo conectar con la IA. Revisa tu API Key.")
     else:
-        with st.spinner("Consultando bases de datos del BOE y boletines autonómicos..."):
-            prompt = f"""
-            Actúa como gestor fiscal experto. Analiza este perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}, Discapacidad:{discapacidad}.
-            Busca las 4 deducciones más importantes. Responde EXACTAMENTE con este formato:
-            [AYUDA]
-            TITULO: nombre corto
-            EUROS: solo el numero
-            RESUMEN: explicacion en una frase
-            FUENTE: Referencia oficial (BOE, nombre de boletin o web oficial)
-            LEGAL: explicacion tecnica corta de la ley
-            [/AYUDA]
-            Separa bloques con '---'.
-            """
-            
+        with st.spinner("Consultando normativas..."):
+            prompt = f"Gestor fiscal España. Perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}. 4 deducciones. Formato: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x LEGAL: x [/AYUDA]"
             try:
                 response = model.generate_content(prompt)
                 texto = response.text
                 
                 ayudas_lista = []
                 ahorro_total = 0
-                bloques = texto.split("[AYUDA]")
-                
-                for b in bloques:
+                for b in texto.split("[AYUDA]"):
                     if "TITULO:" in b:
                         try:
-                            # Extracción segura con Regex
-                            t_val = re.search(r"TITULO:\s*(.*)", b).group(1).strip()
-                            e_val = int(re.search(r"EUROS:\s*(\d+)", b).group(1).strip())
-                            r_val = re.search(r"RESUMEN:\s*(.*)", b).group(1).strip()
-                            f_val = re.search(r"FUENTE:\s*(.*)", b).group(1).strip()
-                            l_val = re.search(r"LEGAL:\s*(.*)", b).group(1).strip()
-                            
-                            ayudas_lista.append({
-                                "t": t_val, "e": e_val, "r": r_val, "f": f_val, "l": l_val
-                            })
-                            ahorro_total += e_val
-                        except:
-                            continue
+                            t = re.search(r"TITULO:\s*(.*)", b).group(1).strip()
+                            e = int(re.search(r"EUROS:\s*(\d+)", b).group(1).strip())
+                            r = re.search(r"RESUMEN:\s*(.*)", b).group(1).strip()
+                            f = re.search(r"FUENTE:\s*(.*)", b).group(1).strip()
+                            l = re.search(r"LEGAL:\s*(.*)", b).group(1).strip()
+                            ayudas_lista.append({"t": t, "e": e, "r": r, "f": f, "l": l})
+                            ahorro_total += e
+                        except: continue
 
-                # --- RENDER DE RESULTADOS ---
-                st.markdown(f"""
-                    <div class="contador-box">
-                        <p style="margin:0; opacity:0.8;">Ahorro Potencial Identificado</p>
-                        <h1 style="margin:0; font-size:3.5rem;">{ahorro_total} €</h1>
-                    </div>
-                """, unsafe_allow_html=True)
-
+                st.markdown(f'<div class="contador-box"><h1>{ahorro_total} €</h1><p>Ahorro Estimado</p></div>', unsafe_allow_html=True)
+                
                 for item in ayudas_lista:
-                    st.markdown(f"""
-                        <div class="caja-ayuda">
-                            <span class="precio-tag">+{item['e']}€</span>
-                            <h3 style="margin:0; color:#1e293b;">{item['t']}</h3>
-                            <p style="color:#64748b; margin:10px 0;">{item['r']}</p>
-                            <span class="fuente-info">📍 Fuente: {item['f']}</span>
-                        </div>
-                    """, unsafe_allow_html=True)
-                    with st.expander("📖 Ver Base Legal y Explicación del BOE"):
-                        st.write(f"**Referencia:** {item['f']}")
-                        st.write(f"**Justificación:** {item['l']}")
+                    st.markdown(f"""<div class="caja-ayuda"><span class="precio-tag">+{item['e']}€</span><h3>{item['t']}</h3><p>{item['r']}</p><span class="fuente-info">📍 Fuente: {item['f']}</span></div>""", unsafe_allow_html=True)
+                    with st.expander("📖 Base Legal"):
+                        st.write(item['l'])
 
-                # --- BOTÓN DE DESCARGA PDF ---
                 if ayudas_lista:
-                    st.divider()
-                    perfil_resumen = f"{situacion} en {comunidad}, {hijos} hijos"
-                    pdf_data = generar_pdf_bytes(ayudas_lista, ahorro_total, perfil_resumen)
-                    st.download_button(
-                        label="📥 DESCARGAR INFORME PDF CORPORATIVO",
-                        data=bytes(pdf_data),
-                        file_name=f"Informe_Fiscal_{comunidad}.pdf",
-                        mime="application/pdf"
-                    )
+                    pdf_data = generar_pdf_bytes(ayudas_lista, ahorro_total, f"{situacion} en {comunidad}")
+                    st.download_button("📥 DESCARGAR PDF", data=bytes(pdf_data), file_name="Estudio_Fiscal.pdf", mime="application/pdf")
 
             except Exception as e:
-                if "429" in str(e):
-                    st.warning("Has superado el límite gratuito de Google. Espera 60 segundos y vuelve a pulsar el botón.")
-                else:
-                    st.error(f"Error inesperado: {e}")
-
-# --- SIDEBAR ---
-with st.sidebar:
-    st.markdown("### 📂 Análisis de Documentos")
-    archivo = st.file_uploader("Sube un PDF fiscal", type="pdf")
-    if archivo and model:
-        if st.button("Analizar Documento"):
-            lector = PdfReader(archivo)
-            texto_pdf = "".join([p.extract_text() for p in lector.pages])
-            analisis = model.generate_content(f"Resume este documento fiscal de forma sencilla: {texto_pdf[:4000]}")
-            st.info(analisis.text)
+                st.error(f"Error: {e}")
