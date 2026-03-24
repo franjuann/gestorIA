@@ -2,54 +2,52 @@ import streamlit as st
 import google.generativeai as genai
 from PyPDF2 import PdfReader
 
-st.set_page_config(page_title="GestorIA Pro", layout="wide")
+# Configuración de la página
+st.set_page_config(page_title="GestorIA - Tu Consultor Legal", layout="centered")
 
-st.markdown("<style>.stApp { background-color: #f5f7f9; } .stButton>button { background-color: #002b5b; color: white; }</style>", unsafe_allow_html=True)
+st.title("🤖 GestorIA")
+st.subheader("Sube un PDF y hazle preguntas técnicas o legales")
 
+# Sidebar para la API Key
 with st.sidebar:
-    st.header("Configuración")
-    api_key = st.text_input("Google API Key", type="password")
-    st.divider()
-    archivo = st.file_uploader("Sube un PDF", type="pdf")
+    st.title("Configuración")
+    api_key = st.text_input("Introduce tu Google API Key:", type="password")
+    st.info("Consigue tu llave en: https://aistudio.google.com/app/apikey")
 
-texto_pdf = ""
-if archivo:
-    reader = PdfReader(archivo)
-    for page in reader.pages:
-        texto_pdf += page.extract_text()
+if api_key:
+    # CONFIGURACIÓN ROBUSTA: Forzamos el transporte REST para evitar errores de conexión
+    genai.configure(api_key=api_key, transport='rest')
+    
+    # Seleccionamos el modelo más estable actualmente
+    model = genai.GenerativeModel('gemini-1.5-flash')
 
-col1, col2 = st.columns([2, 1])
+    # Subida de archivos
+    uploaded_file = st.file_uploader("Elige un archivo PDF", type="pdf")
 
-with col2:
-    st.subheader("Acciones")
-    resumir = st.button("📋 Resumir")
-    ayudas = st.button("💰 Ayudas")
+    if uploaded_file is not None:
+        # Leer el PDF
+        reader = PdfReader(uploaded_file)
+        text = ""
+        for page in reader.pages:
+            text += page.extract_text()
+        
+        st.success("✅ PDF leído correctamente")
 
-with col1:
-    if "messages" not in st.session_state:
-        st.session_state.messages = []
-    for msg in st.session_state.messages:
-        with st.chat_message(msg["role"]):
-            st.markdown(msg["content"])
+        # Área de chat
+        user_input = st.text_input("¿Qué quieres saber sobre este documento?")
 
-    user_input = st.chat_input("Duda...")
-    if resumir: user_input = "Resume este PDF en 5 puntos."
-    if ayudas: user_input = "¿Qué ayudas menciona este texto?"
-
-    if user_input:
-        if not api_key:
-            st.error("Falta API Key")
-        else:
-            st.session_state.messages.append({"role": "user", "content": user_input})
-            with st.chat_message("user"):
-                st.markdown(user_input)
-            
-            genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            
-            instrucciones = f"Eres un gestor experto en España. Contexto: {texto_pdf[:5000]}"
-            response = model.generate_content(f"{instrucciones}\n\nPregunta: {user_input}")
-            
-            with st.chat_message("assistant"):
-                st.markdown(response.text)
-                st.session_state.messages.append({"role": "assistant", "content": response.text})
+        if user_input:
+            with st.spinner("Analizando con IA..."):
+                try:
+                    # Instrucciones del sistema para que actúe como gestor
+                    instrucciones = f"Actúa como un gestor administrativo experto. Basándote en este texto: {text[:10000]}"
+                    
+                    response = model.generate_content(f"{instrucciones}\n\nPregunta: {user_input}")
+                    
+                    st.markdown("### Respuesta:")
+                    st.write(response.text)
+                except Exception as e:
+                    st.error(f"Hubo un problema con la IA: {e}")
+                    st.info("Si el error persiste, prueba a generar una nueva API Key en Google AI Studio.")
+else:
+    st.warning("⚠️ Por favor, introduce tu API Key en la barra lateral para comenzar.")
