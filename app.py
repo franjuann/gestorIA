@@ -1,43 +1,97 @@
 import streamlit as st
 import google.generativeai as genai
 from PyPDF2 import PdfReader
+from fpdf import FPDF
 import datetime
 import re
 
-# --- CONFIGURACIÓN DE PÁGINA Y MARCA ---
-st.set_page_config(page_title="GestorIA - Tu Ahorro Inteligente", layout="wide")
+# --- CONFIGURACIÓN VISUAL ---
+st.set_page_config(page_title="GestorIA Pro - Informe Oficial", layout="wide")
 
-st.markdown("""
+AZUL_CORP = (30, 41, 59)   # Azul oscuro profesional
+VERDE_CORP = (16, 185, 129) # Verde ahorro
+
+st.markdown(f"""
     <style>
-    .stApp { background-color: #f8fafc; }
-    .contador-box {
+    .stApp {{ background-color: #f8fafc; }}
+    .contador-box {{
         background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
-        color: white;
-        padding: 30px;
-        border-radius: 15px;
-        text-align: center;
-        margin-bottom: 25px;
-        box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    }
-    .caja-ayuda {
-        background: white;
-        padding: 20px;
-        border-radius: 12px;
-        border-left: 8px solid #2563eb;
-        margin-bottom: 15px;
+        color: white; padding: 35px; border-radius: 20px; text-align: center;
+    }}
+    .caja-ayuda {{
+        background: white; padding: 25px; border-radius: 15px;
+        border-top: 5px solid #10b981; margin-bottom: 10px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
-    }
-    .precio-tag {
-        font-size: 1.4rem;
-        font-weight: 800;
-        color: #059669;
-        float: right;
-    }
-    .stButton>button { background-color: #2563eb; color: white; border-radius: 8px; height: 3rem; width: 100%; }
+    }}
+    .precio-tag {{ font-size: 1.5rem; font-weight: 800; color: #10b981; float: right; }}
+    .stButton>button {{ background-color: #1e293b; color: white; border-radius: 10px; height: 3.5rem; font-weight: bold; border: none; }}
+    .stButton>button:hover {{ background-color: #10b981; }}
     </style>
     """, unsafe_allow_html=True)
 
-# --- LÓGICA DE CONEXIÓN (SECRETS) ---
+# --- FUNCIÓN GENERADORA DE PDF PROFESIONAL ---
+class PDF_Informe(FPDF):
+    def header(self):
+        self.set_fill_color(*AZUL_CORP)
+        self.rect(0, 0, 210, 40, 'F')
+        self.set_font('Arial', 'B', 20)
+        self.set_text_color(255, 255, 255)
+        self.cell(0, 20, 'INFORME DE OPTIMIZACIÓN FISCAL', 0, 1, 'C')
+        self.set_font('Arial', '', 10)
+        self.cell(0, 5, f'Generado por GestorIA Pro - {datetime.date.today().strftime("%d/%m/%Y")}', 0, 1, 'C')
+
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.set_text_color(128, 128, 128)
+        self.cell(0, 10, 'Este informe es orientativo. Consulte con su gestor oficial. GestorIA © 2026', 0, 0, 'C')
+
+def crear_pdf(perfil, ahorro_total, ayudas):
+    pdf = PDF_Informe()
+    pdf.add_page()
+    pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Resumen Perfil
+    pdf.ln(25)
+    pdf.set_font('Arial', 'B', 14)
+    pdf.set_text_color(*AZUL_CORP)
+    pdf.cell(0, 10, '1. RESUMEN DEL PERFIL ANALIZADO', 0, 1)
+    pdf.set_font('Arial', '', 11)
+    pdf.set_text_color(50, 50, 50)
+    for k, v in perfil.items():
+        pdf.cell(0, 7, f"- {k.capitalize()}: {v}", 0, 1)
+
+    # Bloque de Ahorro Total
+    pdf.ln(10)
+    pdf.set_fill_color(*VERDE_CORP)
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font('Arial', 'B', 16)
+    pdf.cell(0, 15, f'AHORRO POTENCIAL TOTAL: {ahorro_total} EUR', 0, 1, 'C', True)
+
+    # Detalle de Ayudas
+    pdf.ln(10)
+    pdf.set_text_color(*AZUL_CORP)
+    pdf.set_font('Arial', 'B', 14)
+    pdf.cell(0, 10, '2. DETALLE DE DEDUCCIONES Y AYUDAS', 0, 1)
+    
+    for item in ayudas:
+        pdf.set_font('Arial', 'B', 12)
+        pdf.set_text_color(*AZUL_CORP)
+        pdf.cell(160, 10, item['t'], 0, 0)
+        pdf.set_text_color(*VERDE_CORP)
+        pdf.cell(30, 10, f"+{item['e']}e", 0, 1, 'R')
+        
+        pdf.set_font('Arial', '', 10)
+        pdf.set_text_color(80, 80, 80)
+        pdf.multi_cell(0, 6, f"Descripcion: {item['r']}")
+        pdf.set_font('Arial', 'I', 9)
+        pdf.set_text_color(*AZUL_CORP)
+        pdf.multi_cell(0, 6, f"Fuente Legal: {item['f']}")
+        pdf.ln(5)
+    
+    return pdf.output()
+
+# --- LÓGICA DE IA ---
 def configurar_ia():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
@@ -49,116 +103,75 @@ def configurar_ia():
 
 model_name = configurar_ia()
 
-# --- INTERFAZ PRINCIPAL ---
-st.title("🎯 GestorIA: Optimizador Fiscal Pro")
-st.write("Descubre y descarga tu plan de ahorro personalizado en 2 minutos.")
+# --- INTERFAZ ---
+st.title("⚖️ GestorIA Pro")
+st.write("Tu asistente legal con colores corporativos y descarga PDF.")
 
-# --- FORMULARIO INTEGRAL (MANTENIENDO TODO LO ANTERIOR) ---
-with st.expander("👤 CONFIGURAR MI PERFIL FISCAL (Completa aquí)", expanded=True):
-    col1, col2, col3 = st.columns(3)
-    with col1:
+with st.container():
+    st.markdown("### 📋 Configuración del Perfil")
+    c1, c2, c3 = st.columns(3)
+    with c1:
         edad = st.number_input("Edad", 18, 99, 30)
-        situacion = st.selectbox("Trabajo", ["Asalariado", "Autónomo", "Pluriactividad", "Desempleado", "Estudiante", "Pensionista"])
-        ingresos = st.select_slider("Ingresos brutos/año", options=["0-15k", "15k-22k", "22k-35k", "35k-60k", "+60k"], value="22k-35k")
-    with col2:
-        comunidad = st.selectbox("Comunidad Autónoma", ["Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria", "Castilla y León", "Castilla-La Mancha", "Cataluña", "Valencia", "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja"])
-        vivienda = st.selectbox("Vivienda", ["Alquiler", "Hipoteca pre-2013", "Hipoteca post-2013", "Propiedad pagada"])
-        zona_rural = st.checkbox("Vivo en zona rural o municipio pequeño (<5.000 hab)")
-    with col3:
-        hijos = st.number_input("Hijos a cargo", 0, 10, 0)
-        discapacidad = st.checkbox("Discapacidad propia/familiar (≥33%)")
-        familia_numerosa = st.checkbox("Familia Numerosa")
+        situacion = st.selectbox("Situación", ["Asalariado", "Autónomo", "Desempleado", "Pensionista"])
+        ingresos = st.select_slider("Ingresos", options=["0-15k", "15k-22k", "22k-35k", "35k-60k", "+60k"])
+    with c2:
+        comunidad = st.selectbox("Comunidad", ["Andalucía", "Aragón", "Asturias", "Baleares", "Canarias", "Cantabria", "Castilla y León", "Castilla-La Mancha", "Cataluña", "Valencia", "Extremadura", "Galicia", "Madrid", "Murcia", "Navarra", "País Vasco", "La Rioja"])
+        vivienda = st.selectbox("Vivienda", ["Alquiler", "Hipoteca pre-2013", "Propiedad pagada"])
+        zona_rural = st.checkbox("Zona rural")
+    with c3:
+        hijos = st.number_input("Hijos", 0, 10, 0)
+        discapacidad = st.checkbox("Discapacidad")
+        familia_numerosa = st.checkbox("Fam. Numerosa")
 
 st.divider()
 
-# --- ACCIÓN Y RESULTADOS ---
-if st.button("🚀 CALCULAR MI AHORRO TOTAL"):
+if st.button("🔍 GENERAR ESTUDIO PERSONALIZADO"):
     if not model_name:
-        st.error("Error: Configura tu GOOGLE_API_KEY en los Secrets.")
+        st.error("Falta API Key en Secrets.")
     else:
         model = genai.GenerativeModel(model_name)
-        with st.spinner("Analizando normativas estatales y autonómicas..."):
-            
-            prompt = f"""
-            Actúa como un Socio de Gestoría Senior. Analiza este perfil:
-            - Edad: {edad}, Comunidad: {comunidad}, Trabajo: {situacion}, Ingresos: {ingresos}.
-            - Vivienda: {vivienda}, Zona Rural: {zona_rural}, Hijos: {hijos}, Discapacidad: {discapacidad}, F. Numerosa: {familia_numerosa}.
-
-            Busca las 4 mejores deducciones o ayudas. Responde EXCLUSIVAMENTE con este formato para cada una:
-            [AYUDA]
-            TITULO: Nombre corto
-            EUROS: Solo el número estimado de ahorro anual (ej: 500)
-            RESUMEN: Una frase explicativa
-            LINK: Enlace o nombre del organismo
-            [/AYUDA]
-            Separa cada bloque con '---'. Al final, añade un resumen motivador.
-            """
-            
+        with st.spinner("Consultando fuentes oficiales..."):
+            prompt = f"Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {ingresos}, {comunidad}, {vivienda}, Rural:{zona_rural}, Hijos:{hijos}, Discapacidad:{discapacidad}, F.Num:{familia_numerosa}. Busca 4 ayudas. Formato: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x EXPLICACION_LEGAL: x [/AYUDA]"
             response = model.generate_content(prompt)
             texto_ia = response.text
-            st.session_state['full_report'] = texto_ia # Guardamos para el informe descargable
-
-            # --- EXTRACCIÓN DE DATOS Y CONTADOR ---
-            bloques = texto_ia.split("---")
+            
+            # Extracción
+            bloques = texto_ia.split("[AYUDA]")
             total_ahorro = 0
-            cards_data = []
-
+            ayudas_lista = []
             for b in bloques:
-                if "[AYUDA]" in b:
+                if "TITULO:" in b:
                     try:
-                        titulo = re.search(r"TITULO: (.*)", b).group(1)
-                        euros_str = re.search(r"EUROS: (\d+)", b).group(1)
-                        resumen = re.search(r"RESUMEN: (.*)", b).group(1)
-                        link = re.search(r"LINK: (.*)", b).group(1)
-                        
-                        euros = int(euros_str)
-                        total_ahorro += euros
-                        cards_data.append({"t": titulo, "e": euros, "r": resumen, "l": link})
+                        t = re.search(r"TITULO: (.*)", b).group(1)
+                        e = int(re.search(r"EUROS: (\d+)", b).group(1))
+                        r = re.search(r"RESUMEN: (.*)", b).group(1)
+                        f = re.search(r"FUENTE: (.*)", b).group(1)
+                        ayudas_lista.append({"t":t, "e":e, "r":r, "f":f})
+                        total_ahorro += e
                     except: continue
 
-            # --- MOSTRAR CONTADOR TOTAL ---
-            st.markdown(f"""
-                <div class="contador-box">
-                    <p style="margin:0; font-size:1.2rem; opacity:0.8;">Ahorro Potencial Total</p>
-                    <h1 style="margin:0; font-size:4rem; color:white;">{total_ahorro} €</h1>
-                    <p style="margin:0; font-size:0.9rem;">Estimación basada en tu perfil para el ejercicio actual</p>
-                </div>
-            """, unsafe_allow_html=True)
-
-            # --- MOSTRAR CAJITAS VISUALES ---
-            cols_cards = st.columns(2)
-            for i, card in enumerate(cards_data):
-                with cols_cards[i % 2]:
-                    st.markdown(f"""
-                        <div class="caja-ayuda">
-                            <span class="precio-tag">+{card['e']}€</span>
-                            <h3 style="margin-top:0;">{card['t']}</h3>
-                            <p style="color:#475569; font-size:0.9rem;">{card['r']}</p>
-                            <small>📍 {card['l']}</small>
-                        </div>
-                    """, unsafe_allow_html=True)
-
-            # --- BOTÓN DE DESCARGA (MANTENIENDO LO ANTERIOR) ---
-            st.divider()
-            fecha = datetime.date.today().strftime("%d/%m/%Y")
-            info_descarga = f"INFORME GESTORIA PRO\nFecha: {fecha}\nAhorro Total Estimado: {total_ahorro}€\n\nDetalles:\n{texto_ia}"
+            # RENDER VISUAL
+            st.markdown(f'<div class="contador-box"><p>Ahorro Estimado Anual</p><h1>{total_ahorro} €</h1></div>', unsafe_allow_html=True)
+            
+            for item in ayudas_lista:
+                st.markdown(f'<div class="caja-ayuda"><span class="precio-tag">+{item["e"]}€</span><h3>{item["t"]}</h3><p>{item["r"]}</p><small><b>Fuente:</b> {item["f"]}</small></div>', unsafe_allow_html=True)
+            
+            # BOTÓN PDF
+            pdf_bytes = crear_pdf({
+                "Ubicación": comunidad, "Situación": situacion, "Hijos": hijos, "Vivienda": vivienda
+            }, total_ahorro, ayudas_lista)
             
             st.download_button(
-                label="📥 DESCARGAR MI INFORME PROFESIONAL",
-                data=info_descarga,
-                file_name=f"Plan_Ahorro_{comunidad}.txt",
-                mime="text/plain"
+                label="📥 DESCARGAR INFORME PDF CORPORATIVO",
+                data=pdf_bytes,
+                file_name=f"Informe_Ahorro_{comunidad}.pdf",
+                mime="application/pdf"
             )
 
-# --- ÁREA DE PDF (MANTENIENDO LO ANTERIOR) ---
 with st.sidebar:
-    st.divider()
-    st.subheader("📄 Analizar Documento Extra")
-    pdf_file = st.file_uploader("Sube un PDF (Borrador, carta, etc.)", type="pdf")
-    if pdf_file and model_name:
-        reader = PdfReader(pdf_file)
-        pdf_text = "".join([p.extract_text() for p in reader.pages])
-        if st.button("Analizar PDF"):
-            model = genai.GenerativeModel(model_name)
-            res = model.generate_content(f"Explica este documento para un {situacion} de {edad} años: {pdf_text[:5000]}")
-            st.info(res.text)
+    st.subheader("📁 Analizador PDF")
+    pdf_up = st.file_uploader("Subir documento", type="pdf")
+    if pdf_up and model_name:
+        text_pdf = "".join([p.extract_text() for p in PdfReader(pdf_up).pages])
+        if st.button("Analizar"):
+            st.info(genai.GenerativeModel(model_name).generate_content(f"Resume esto: {text_pdf[:5000]}").text)
