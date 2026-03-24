@@ -36,7 +36,12 @@ st.caption("Analizamos la normativa vigente 2025-2026 para encontrar tu ahorro."
 # Barra lateral minimalista para la API Key
 with st.sidebar:
     st.header("🔑 Acceso")
-    api_key = st.text_input("Introduce tu API Key:", type="password")
+    # Intentamos sacar la clave de los Secretos de Streamlit
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+else:
+    api_key = None
+    st.error("Error de configuración: No se ha encontrado la API Key en los Secrets.")
     if api_key: st.success("Conexión Activa")
     else: st.warning("Esperando Llave...")
 
