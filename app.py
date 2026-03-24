@@ -45,7 +45,7 @@ with col1:
                 st.markdown(user_input)
             
             genai.configure(api_key=api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            model = genai.GenerativeModel('gemini-1.5-flash-latest')
             
             instrucciones = f"Eres un gestor experto en España. Contexto: {texto_pdf[:5000]}"
             response = model.generate_content(f"{instrucciones}\n\nPregunta: {user_input}")
