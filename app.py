@@ -61,29 +61,16 @@ def generar_pdf_bytes(ayudas, total, perfil_str):
         pdf.ln(4)
     return pdf.output()
 
-# --- BUSCADOR AUTOMÁTICO DE MODELO (SOLUCIÓN AL 404) ---
 def configurar_ia_dinamica():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
         try:
-            # Listamos todos los modelos disponibles para tu API Key
-            modelos_disponibles = [m.name for m in genai.list_models() if 'generateContent' in m.supported_generation_methods]
-            
-            # Prioridad 1: Flash 1.5 (más barato/rápido)
-            for m in modelos_disponibles:
-                if "gemini-1.5-flash" in m:
-                    return genai.GenerativeModel(m)
-            
-            # Prioridad 2: Pro
-            for m in modelos_disponibles:
-                if "gemini-pro" in m:
-                    return genai.GenerativeModel(m)
-            
-            # Si no, el primero que aparezca
-            if modelos_disponibles:
-                return genai.GenerativeModel(modelos_disponibles[0])
-        except Exception as e:
-            st.error(f"Error al listar modelos: {e}")
+            # Priorizamos el modelo 1.5 Flash que tiene mucha más cuota gratuita
+            # que el 3.1 Pro o el Pro normal.
+            return genai.GenerativeModel('gemini-1.5-flash')
+        except:
+            # Si falla, que use el que sea, pero Flash es el objetivo
+            return genai.GenerativeModel('gemini-pro')
     return None
 
 model = configurar_ia_dinamica()
