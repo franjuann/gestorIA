@@ -8,8 +8,8 @@ import re
 # --- CONFIGURACIÓN VISUAL ---
 st.set_page_config(page_title="GestorIA Pro - Informe Oficial", layout="wide")
 
-AZUL_CORP = (30, 41, 59)   # Azul oscuro profesional
-VERDE_CORP = (16, 185, 129) # Verde ahorro
+AZUL_CORP = (30, 41, 59)   
+VERDE_CORP = (16, 185, 129) 
 
 st.markdown(f"""
     <style>
@@ -51,7 +51,6 @@ def crear_pdf(perfil, ahorro_total, ayudas):
     pdf.add_page()
     pdf.set_auto_page_break(auto=True, margin=15)
     
-    # Resumen Perfil
     pdf.ln(25)
     pdf.set_font('Arial', 'B', 14)
     pdf.set_text_color(*AZUL_CORP)
@@ -59,16 +58,14 @@ def crear_pdf(perfil, ahorro_total, ayudas):
     pdf.set_font('Arial', '', 11)
     pdf.set_text_color(50, 50, 50)
     for k, v in perfil.items():
-        pdf.cell(0, 7, f"- {k.capitalize()}: {v}", 0, 1)
+        pdf.cell(0, 7, f"- {k}: {v}", 0, 1)
 
-    # Bloque de Ahorro Total
     pdf.ln(10)
     pdf.set_fill_color(*VERDE_CORP)
     pdf.set_text_color(255, 255, 255)
     pdf.set_font('Arial', 'B', 16)
     pdf.cell(0, 15, f'AHORRO POTENCIAL TOTAL: {ahorro_total} EUR', 0, 1, 'C', True)
 
-    # Detalle de Ayudas
     pdf.ln(10)
     pdf.set_text_color(*AZUL_CORP)
     pdf.set_font('Arial', 'B', 14)
@@ -77,7 +74,7 @@ def crear_pdf(perfil, ahorro_total, ayudas):
     for item in ayudas:
         pdf.set_font('Arial', 'B', 12)
         pdf.set_text_color(*AZUL_CORP)
-        pdf.cell(160, 10, item['t'], 0, 0)
+        pdf.cell(160, 10, item['t'][:40], 0, 0)
         pdf.set_text_color(*VERDE_CORP)
         pdf.cell(30, 10, f"+{item['e']}e", 0, 1, 'R')
         
@@ -89,6 +86,7 @@ def crear_pdf(perfil, ahorro_total, ayudas):
         pdf.multi_cell(0, 6, f"Fuente Legal: {item['f']}")
         pdf.ln(5)
     
+    # IMPORTANTE: Devolvemos los bytes del PDF de forma que Streamlit los acepte
     return pdf.output()
 
 # --- LÓGICA DE IA ---
@@ -105,7 +103,6 @@ model_name = configurar_ia()
 
 # --- INTERFAZ ---
 st.title("⚖️ GestorIA Pro")
-st.write("Tu asistente legal con colores corporativos y descarga PDF.")
 
 with st.container():
     st.markdown("### 📋 Configuración del Perfil")
@@ -127,18 +124,18 @@ st.divider()
 
 if st.button("🔍 GENERAR ESTUDIO PERSONALIZADO"):
     if not model_name:
-        st.error("Falta API Key en Secrets.")
+        st.error("Falta API Key.")
     else:
         model = genai.GenerativeModel(model_name)
-        with st.spinner("Consultando fuentes oficiales..."):
-            prompt = f"Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {ingresos}, {comunidad}, {vivienda}, Rural:{zona_rural}, Hijos:{hijos}, Discapacidad:{discapacidad}, F.Num:{familia_numerosa}. Busca 4 ayudas. Formato: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x EXPLICACION_LEGAL: x [/AYUDA]"
+        with st.spinner("Generando informe..."):
+            prompt = f"Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {ingresos}, {comunidad}, {vivienda}, Rural:{zona_rural}, Hijos:{hijos}, Discapacidad:{discapacidad}, F.Num:{familia_numerosa}. Busca 4 ayudas. Formato obligatorio: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x EXPLICACION_LEGAL: x [/AYUDA]"
             response = model.generate_content(prompt)
             texto_ia = response.text
             
-            # Extracción
-            bloques = texto_ia.split("[AYUDA]")
-            total_ahorro = 0
+            # Extracción limpia
             ayudas_lista = []
+            total_ahorro = 0
+            bloques = texto_ia.split("[AYUDA]")
             for b in bloques:
                 if "TITULO:" in b:
                     try:
@@ -150,28 +147,37 @@ if st.button("🔍 GENERAR ESTUDIO PERSONALIZADO"):
                         total_ahorro += e
                     except: continue
 
-            # RENDER VISUAL
-            st.markdown(f'<div class="contador-box"><p>Ahorro Estimado Anual</p><h1>{total_ahorro} €</h1></div>', unsafe_allow_html=True)
+            # Visualización
+            st.markdown(f'<div class="contador-box"><h1>{total_ahorro} €</h1><p>Ahorro Potencial</p></div>', unsafe_allow_html=True)
             
             for item in ayudas_lista:
-                st.markdown(f'<div class="caja-ayuda"><span class="precio-tag">+{item["e"]}€</span><h3>{item["t"]}</h3><p>{item["r"]}</p><small><b>Fuente:</b> {item["f"]}</small></div>', unsafe_allow_html=True)
+                st.markdown(f'<div class="caja-ayuda"><span class="precio-tag">+{item["e"]}€</span><h3>{item["t"]}</h3><p>{item["r"]}</p></div>', unsafe_allow_html=True)
             
-            # BOTÓN PDF
-            pdf_bytes = crear_pdf({
-                "Ubicación": comunidad, "Situación": situacion, "Hijos": hijos, "Vivienda": vivienda
-            }, total_ahorro, ayudas_lista)
-            
-            st.download_button(
-                label="📥 DESCARGAR INFORME PDF CORPORATIVO",
-                data=pdf_bytes,
-                file_name=f"Informe_Ahorro_{comunidad}.pdf",
-                mime="application/pdf"
-            )
+            # --- EL ARREGLO DEL BOTÓN ---
+            try:
+                # Generamos el PDF
+                pdf_output = crear_pdf({
+                    "Comunidad": comunidad, 
+                    "Situación": situacion, 
+                    "Ingresos": ingresos
+                }, total_ahorro, ayudas_lista)
+                
+                # Convertimos explícitamente a bytes para Streamlit
+                pdf_bytes = bytes(pdf_output)
+                
+                st.download_button(
+                    label="📥 DESCARGAR INFORME PDF PROFESIONAL",
+                    data=pdf_bytes,
+                    file_name=f"Informe_Fiscal_{comunidad}.pdf",
+                    mime="application/pdf"
+                )
+            except Exception as e:
+                st.error(f"Error al generar el PDF: {e}")
 
 with st.sidebar:
     st.subheader("📁 Analizador PDF")
     pdf_up = st.file_uploader("Subir documento", type="pdf")
     if pdf_up and model_name:
-        text_pdf = "".join([p.extract_text() for p in PdfReader(pdf_up).pages])
+        txt_pdf = "".join([p.extract_text() for p in PdfReader(pdf_up).pages])
         if st.button("Analizar"):
-            st.info(genai.GenerativeModel(model_name).generate_content(f"Resume esto: {text_pdf[:5000]}").text)
+            st.info(genai.GenerativeModel(model_name).generate_content(f"Resume: {txt_pdf[:4000]}").text)
