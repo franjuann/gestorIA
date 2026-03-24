@@ -19,7 +19,7 @@ st.markdown(f"""
         color: white; padding: 30px; border-radius: 15px; text-align: center; margin-bottom: 25px;
     }}
     .caja-ayuda {{
-        background: white; padding: 25px; border-radius: 12px;
+        background: white; padding: 20px; border-radius: 12px;
         border-top: 5px solid #10b981; margin-bottom: 15px;
         box-shadow: 0 4px 6px rgba(0,0,0,0.05);
     }}
@@ -61,11 +61,10 @@ def generar_pdf_bytes(ayudas, total, perfil_str):
         pdf.ln(3)
     return pdf.output()
 
-# --- LÓGICA DE IA (CORREGIDA PARA EVITAR "NOT FOUND") ---
+# --- LÓGICA DE IA ---
 def obtener_modelo():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        # Intentamos usar el modelo flash más estable
         return genai.GenerativeModel('gemini-1.5-flash')
     return None
 
@@ -92,22 +91,10 @@ if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
         st.error("Error: No se ha configurado la API Key correctamente.")
     else:
         with st.spinner("Consultando normativas oficiales..."):
-            prompt = f"""
-            Actúa como gestor fiscal senior en España. Perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}, Discapacidad:{discapacidad}.
-            Busca las 4 mejores deducciones. Responde EXACTAMENTE con este formato:
-            [AYUDA]
-            TITULO: nombre de la deduccion
-            EUROS: solo el numero
-            RESUMEN: explicacion breve
-            FUENTE: enlace o referencia BOE/Comunidad
-            LEGAL: base legal resumida
-            [/AYUDA]
-            Separa cada bloque con '---'.
-            """
+            prompt = f"""Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}, Discapacidad:{discapacidad}. Busca 4 ayudas. Formato: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x LEGAL: x [/AYUDA]"""
+            
             try:
                 res = model.generate_content(prompt).text
-                
-                # Procesamiento
                 ayudas_finales = []
                 total = 0
                 bloques = res.split("[AYUDA]")
@@ -115,10 +102,53 @@ if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
                 for b in bloques:
                     if "TITULO:" in b:
                         try:
-                            t = re.search(r"TITULO:\s*(.*)", b).group(1)
-                            e = re.search(r"EUROS:\s*(\d+)", b).group(1)
-                            r = re.search(r"RESUMEN:\s*(.*)", b).group(1)
-                            f = re.search(r"FUENTE:\s*(.*)", b).group(1)
-                            l = re.search(r"LEGAL:\s*(.*)", b).group(1)
+                            # Extracción con expresiones regulares para evitar fallos de formato
+                            t_match = re.search(r"TITULO:\s*(.*)", b)
+                            e_match = re.search(r"EUROS:\s*(\d+)", b)
+                            r_match = re.search(r"RESUMEN:\s*(.*)", b)
+                            f_match = re.search(r"FUENTE:\s*(.*)", b)
+                            l_match = re.search(r"LEGAL:\s*(.*)", b)
                             
-                            ayudas_finales.append({"t":t, "e":
+                            if t_match and e_match:
+                                t = t_match.group(1).strip()
+                                e = int(e_match.group(1).strip())
+                                r = r_match.group(1).strip() if r_match else ""
+                                f = f_match.group(1).strip() if f_match else "Fuente oficial"
+                                l = l_match.group(1).strip() if l_match else ""
+                                
+                                ayudas_finales.append({"t": t, "e": e, "r": r, "f": f, "l": l})
+                                total += e
+                        except Exception as inner_e:
+                            continue
+
+                # RENDER RESULTADOS
+                st.markdown(f'<div class="contador-box"><p>Ahorro Total Identificado</p><h1>{total} €</h1></div>', unsafe_allow_html=True)
+                
+                for item in ayudas_finales:
+                    st.markdown(f"""
+                    <div class="caja-ayuda">
+                        <span class="precio-tag">+{item['e']}€</span>
+                        <h3>{item['t']}</h3>
+                        <p>{item['r']}</p>
+                        <span class="fuente-info">📍 Fuente: {item['f']}</span>
+                    </div>
+                    """, unsafe_allow_html=True)
+                    with st.expander("📖 Ver Base Legal Completa"):
+                        st.write(item['l'])
+
+                # BOTÓN PDF
+                if ayudas_finales:
+                    p_str = f"{situacion} en {comunidad}, {edad} años"
+                    pdf_out = generar_pdf_bytes(ayudas_finales, total, p_str)
+                    st.download_button("📥 Descargar Informe PDF Profesional", data=bytes(pdf_out), file_name="Estudio_Fiscal.pdf", mime="application/pdf")
+
+            except Exception as e:
+                st.error(f"Error de proceso: {e}")
+
+with st.sidebar:
+    st.header("Análisis de Documentos")
+    f_up = st.file_uploader("Subir PDF", type="pdf")
+    if f_up:
+        if st.button("Analizar PDF"):
+            t_pdf = "".join([p.extract_text() for p in PdfReader(f_up).pages])
+            st.write(model.generate_content(f"Resume: {t_pdf[:3000]}").text)
