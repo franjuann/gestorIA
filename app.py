@@ -61,16 +61,26 @@ def generar_pdf_bytes(ayudas, total, perfil_str):
         pdf.ln(3)
     return pdf.output()
 
-# --- LÓGICA DE IA ---
-def obtener_modelo():
+# --- LÓGICA DE IA CON AUTODETECCIÓN DE MODELO ---
+def configurar_ia():
     if "GOOGLE_API_KEY" in st.secrets:
         genai.configure(api_key=st.secrets["GOOGLE_API_KEY"])
-        return genai.GenerativeModel('gemini-1.5-flash')
+        try:
+            # Listamos modelos y buscamos el primero que soporte generación de contenido
+            for m in genai.list_models():
+                if 'generateContent' in m.supported_generation_methods:
+                    if 'gemini-1.5-flash' in m.name or 'gemini-pro' in m.name:
+                        return genai.GenerativeModel(m.name)
+            # Si no encuentra los preferidos, devuelve el primero disponible
+            return genai.GenerativeModel('gemini-pro') 
+        except Exception as e:
+            st.error(f"Error al listar modelos: {e}")
+            return None
     return None
 
-model = obtener_modelo()
+model = configurar_ia()
 
-# --- UI ---
+# --- INTERFAZ ---
 st.title("⚖️ GestorIA: Optimización Fiscal Pro")
 
 with st.expander("👤 Configuración de Perfil", expanded=True):
@@ -88,10 +98,10 @@ with st.expander("👤 Configuración de Perfil", expanded=True):
 
 if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
     if not model:
-        st.error("Error: No se ha configurado la API Key correctamente.")
+        st.error("Error: No se ha podido conectar con el modelo de IA. Revisa tu API Key.")
     else:
         with st.spinner("Consultando normativas oficiales..."):
-            prompt = f"""Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}, Discapacidad:{discapacidad}. Busca 4 ayudas. Formato: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x LEGAL: x [/AYUDA]"""
+            prompt = f"""Actúa como gestor fiscal. Perfil: {edad} años, {situacion}, {comunidad}, {vivienda}, Rural:{rural}, Hijos:{hijos}, Discapacidad:{discapacidad}. Busca 4 ayudas. Formato obligatorio: [AYUDA] TITULO: x EUROS: x RESUMEN: x FUENTE: x LEGAL: x [/AYUDA]"""
             
             try:
                 res = model.generate_content(prompt).text
@@ -102,7 +112,6 @@ if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
                 for b in bloques:
                     if "TITULO:" in b:
                         try:
-                            # Extracción con expresiones regulares para evitar fallos de formato
                             t_match = re.search(r"TITULO:\s*(.*)", b)
                             e_match = re.search(r"EUROS:\s*(\d+)", b)
                             r_match = re.search(r"RESUMEN:\s*(.*)", b)
@@ -110,18 +119,16 @@ if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
                             l_match = re.search(r"LEGAL:\s*(.*)", b)
                             
                             if t_match and e_match:
-                                t = t_match.group(1).strip()
-                                e = int(e_match.group(1).strip())
-                                r = r_match.group(1).strip() if r_match else ""
-                                f = f_match.group(1).strip() if f_match else "Fuente oficial"
-                                l = l_match.group(1).strip() if l_match else ""
-                                
-                                ayudas_finales.append({"t": t, "e": e, "r": r, "f": f, "l": l})
-                                total += e
-                        except Exception as inner_e:
-                            continue
+                                ayudas_finales.append({
+                                    "t": t_match.group(1).strip(),
+                                    "e": int(e_match.group(1).strip()),
+                                    "r": r_match.group(1).strip() if r_match else "",
+                                    "f": f_match.group(1).strip() if f_match else "Fuente oficial",
+                                    "l": l_match.group(1).strip() if l_match else ""
+                                })
+                                total += ayudas_finales[-1]["e"]
+                        except: continue
 
-                # RENDER RESULTADOS
                 st.markdown(f'<div class="contador-box"><p>Ahorro Total Identificado</p><h1>{total} €</h1></div>', unsafe_allow_html=True)
                 
                 for item in ayudas_finales:
@@ -136,19 +143,10 @@ if st.button("🚀 ANALIZAR Y VERIFICAR FUENTES OFICIALES"):
                     with st.expander("📖 Ver Base Legal Completa"):
                         st.write(item['l'])
 
-                # BOTÓN PDF
                 if ayudas_finales:
                     p_str = f"{situacion} en {comunidad}, {edad} años"
                     pdf_out = generar_pdf_bytes(ayudas_finales, total, p_str)
                     st.download_button("📥 Descargar Informe PDF Profesional", data=bytes(pdf_out), file_name="Estudio_Fiscal.pdf", mime="application/pdf")
 
             except Exception as e:
-                st.error(f"Error de proceso: {e}")
-
-with st.sidebar:
-    st.header("Análisis de Documentos")
-    f_up = st.file_uploader("Subir PDF", type="pdf")
-    if f_up:
-        if st.button("Analizar PDF"):
-            t_pdf = "".join([p.extract_text() for p in PdfReader(f_up).pages])
-            st.write(model.generate_content(f"Resume: {t_pdf[:3000]}").text)
+                st.error(f"Error de proceso con la IA: {e}")
